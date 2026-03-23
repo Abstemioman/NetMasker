@@ -1,0 +1,211 @@
+#!/bin/bash
+# Colours
+greenColour="\e[0;32m\033[1m"
+endColour="\033[0m\e[0m"
+redColour="\e[0;31m\033[1m"
+blueColour="\e[0;34m\033[1m"
+yellowColour="\e[0;33m\033[1m"
+purpleColour="\e[0;35m\033[1m"
+turquoiseColour="\e[0;36m\033[1m"
+grayColour="\e[0;37m\033[1m"
+
+# --- BANNER ---
+echo -e "${greenColour}"
+echo -e "      _   _       _    __  __            _               "
+echo -e "     | \ | |     | |  |  \/  |          | |              "
+echo -e "     |  \| | ___ | |_ | .  . | __ _  ___| | _____ _ __   "
+echo -e "     | . \ |/ _ \| __|| |\/| |/ _\` |/ __| |/ / _ \ '__|  "
+echo -e "     | |\  |  __/| |_ | |  | | (_| |\__ \   <  __/ |     "
+echo -e "     \_| \_/\___| \__|\_|  |_/\__,_||___/_|\_\___|_|     "
+echo -e "${blueColour}"
+echo -e " ┌─────────────────────────────────────────────────────────┐"
+echo -e " │ Network Analysis Tool | Dev: Abstemioman | Engine: BC   │"
+echo -e " └─────────────────────────────────────────────────────────┘"
+echo -e "${endColour}"
+
+# Ctrl+c function
+function ctrl_c ()
+{
+  echo -e "\n[!] Saliendo...\n"
+  tput cnorm && exit 1
+}
+
+trap ctrl_c INT
+
+# Variables
+IPMask="$1"
+
+# Comprobacion de argumento con /
+if [[ "$1" == *"/"* ]]; then
+    IPBase=$(echo $1 | cut -d '/' -f 1)
+    CIDR=$(echo $1 | cut -d '/' -f 2)
+    # --- BARRA DE PROGRESO COMPLETADO ---
+    echo -ne "\n${greenColour}[*] Analizando segmentos de red... ["
+    for i in {1..30}; do
+      echo -ne "#"
+      sleep 0.02
+    done
+    echo -e "]${endColour}${greenColour} ¡Completado!${endColour}\n"
+
+else
+    IPBase="$1"
+    CIDR=""
+fi
+
+# Validación
+if [ -z "$IPBase" ]; then
+    # --- BARRA DE PROGRESO FALLIDO ---
+    echo -ne "\n${greenColour}[*] Analizando segmentos de red... ["
+    for i in {1..30}; do
+      echo -ne "#"
+      sleep 0.02
+    done
+    echo -e "]${endColour}${redColour} ¡Fallido!${endColour}\n"
+
+    echo -e "\n${redColour}[!] Error: No has introducido la dirección IP.${endColour}"
+    echo -e "${redColour}[!] Uso: $0 <IP/CIDR>${endColour}${endColour}\n"
+    exit 1
+fi
+
+if [ -z "$CIDR" ]; then
+
+    # --- BARRA DE PROGRESO FALLIDO ---
+    echo -ne "\n${greenColour}[*] Analizando segmentos de red... ["
+    for i in {1..30}; do
+      echo -ne "#"
+      sleep 0.02
+    done
+    echo -e "]${endColour}${redColour} ¡Fallido!${endColour}\n"
+    echo -e "\n${redColour}[!] Error: Falta la máscara (CIDR).${endColour}"
+    echo -e "${redColour}[!] Uso: $0 <IP/CIDR>${endColour}${endColour}\n"
+    exit 1
+    exit 1
+fi
+
+# BinaryIP
+read io1 io2 io3 io4 <<< $(echo $IPBase | awk -F'.' '{print $1, $2, $3, $4}')
+BinaryIP=$(printf "%08d.%08d.%08d.%08d" $(echo "obase=2; $io1" | bc) $(echo "obase=2; $io2" | bc) $(echo "obase=2; $io3" | bc) $(echo "obase=2; $io4" | bc))
+
+# BinaryMask
+Empty_mask=""
+for i in $(seq 1 32); do 
+  if [[ $i -le $CIDR ]]; then
+    Empty_mask="${Empty_mask}1"
+  else
+    Empty_mask="${Empty_mask}0"
+  fi
+done
+
+mo1=${Empty_mask:0:8}
+mo2=${Empty_mask:8:8}
+mo3=${Empty_mask:16:8}
+mo4=${Empty_mask:24:8}
+
+BinaryMask=$(printf "%s.%s.%s.%s" $mo1 $mo2 $mo3 $mo4)
+NetworkMask=$(printf "%d.%d.%d.%d" $(echo "ibase=2;$mo1"| bc) $(echo "ibase=2;$mo2" | bc) $(echo "ibase=2;$mo3" | bc) $(echo "ibase=2;$mo4" | bc))
+
+# Calculo AND para Network
+CleanBinaryIP=$(echo $BinaryIP | tr -d '.')
+CleanBinaryMask=$(echo $BinaryMask | tr -d '.')
+
+CleanBinaryNetwork=""
+
+for i in $(seq 0 31); do
+  bit_ip=${CleanBinaryIP:$i:1}
+  bit_mask=${CleanBinaryMask:$i:1}
+
+  if [[ "$bit_ip" -eq 1 ]] && [[ "$bit_mask" -eq 1 ]]; then
+    CleanBinaryNetwork="${CleanBinaryNetwork}1"
+  else
+    CleanBinaryNetwork="${CleanBinaryNetwork}0"
+  fi
+done
+
+no1=${CleanBinaryNetwork:0:8}
+no2=${CleanBinaryNetwork:8:8}
+no3=${CleanBinaryNetwork:16:8}
+no4=${CleanBinaryNetwork:24:8}
+
+BinaryNetwork=$(printf "%s.%s.%s.%s" $no1 $no2 $no3 $no4)
+Network=$(printf "%d.%d.%d.%d" $(echo "ibase=2;$no1"| bc) $(echo "ibase=2;$no2" | bc) $(echo "ibase=2;$no3" | bc) $(echo "ibase=2;$no4" | bc))
+
+# BroadcastAddress
+
+CleanBinaryBroadcast=""
+
+for i in $(seq 0 31); do 
+  bit_ip=${CleanBinaryIP:$i:1}
+  bit_mask=${CleanBinaryMask:$i:1}
+  if [[ "$bit_mask" -eq 1 ]]; then
+    CleanBinaryBroadcast="${CleanBinaryBroadcast}${bit_ip}"
+  else
+    CleanBinaryBroadcast="${CleanBinaryBroadcast}1"
+  fi
+done
+
+bo1=${CleanBinaryBroadcast:0:8}
+bo2=${CleanBinaryBroadcast:8:8}
+bo3=${CleanBinaryBroadcast:16:8}
+bo4=${CleanBinaryBroadcast:24:8}
+
+BinaryBroadcast=$(printf "%s.%s.%s.%s" $bo1 $bo2 $bo3 $bo4)
+Broadcast=$(printf "%d.%d.%d.%d" $(echo "ibase=2;$bo1" | bc) $(echo "ibase=2;$bo2" | bc) $(echo "ibase=2;$bo3" | bc) $(echo "ibase=2;$bo4" | bc))
+
+# HostMin y HostMax
+if [ $CIDR -le 30 ]; then
+HostMin=$(printf "%d.%d.%d.%d" $(echo "ibase=2;$no1" | bc) $(echo "ibase=2;$no2" | bc) $(echo "ibase=2;$no3" | bc) $(echo "ibase=2;$no4 + 1" | bc))
+HostMax=$(printf "%d.%d.%d.%d" $(echo "ibase=2;$bo1" | bc) $(echo "ibase=2;$bo2" | bc) $(echo "ibase=2;$bo3" | bc) $(echo "ibase=2;$bo4 - 1" | bc))
+else
+    HostMin="N/A"
+    HostMax="N/A"
+fi
+
+
+#CLASES IP
+first_oct=$(echo "ibase=2;$no1" | bc)
+second_oct=$(echo "ibase=2;$no2" | bc)
+
+if [ $first_oct -eq 0 ]; then
+    Class="Software (Red local actual)"
+elif [ $first_oct -eq 127 ]; then
+    Class="Loopback (Localhost)"
+elif [ $first_oct -ge 1 -a $first_oct -le 126 ]; then
+    Class="A"
+elif [ $first_oct -ge 128 -a $first_oct -le 191 ]; then
+    Class="B"
+elif [ $first_oct -ge 192 -a $first_oct -le 223 ]; then
+    Class="C"
+elif [ $first_oct -ge 224 -a $first_oct -le 239 ]; then
+    Class="Multicast (Clase D)"
+elif [ $first_oct -ge 240 -a $first_oct -le 255 ]; then
+    Class="Experimental (Clase E)"
+else
+    Class="Desconocida"
+fi
+
+# APIPA (NO HAY INTERNET)
+if [[ $first_oct -eq 169 && $second_oct -eq 254 ]]; then
+    Class="APIPA (Auto-configuración)"
+fi
+
+
+# PRIVADA/PÚBLICA
+if [[ $first_oct -eq 10 ]]; then
+    Type="Privada"
+elif [[ $first_oct -eq 172 && $second_oct -ge 16 && $second_oct -le 31 ]]; then
+    Type="Privada"
+elif [[ $first_oct -eq 192 && $second_oct -eq 168 ]]; then
+    Type="Privada"
+else
+    Type="Pública"
+fi
+
+# --- OUTPUT ---
+echo -e "\n${grayColour} $(printf "%-11s" "Address:") ${blueColour}$(printf "%-21s" "$IPBase")${redColour} $BinaryIP${endColour}"
+echo -e "${grayColour} $(printf "%-10s" "Netmask:")  ${blueColour}$(printf "%-21s" "$NetworkMask = $CIDR")${redColour} $BinaryMask${endColour}"
+echo -e "${grayColour} -------------------------------------------------------------------${endColour}"
+echo -e "${grayColour} $(printf "%-10s" "Network:")  ${blueColour}$(printf "%-21s" $Network)${endColour}${redColour} $BinaryNetwork${endColour}"
+echo -e "${grayColour} $(printf "%-10s" "Broadcast:")  ${blueColour}$(printf "%-21s" $Broadcast)${endColour}${redColour} $BinaryBroadcast${endColour}"
+echo -e "${grayColour} $(printf "%-10s" "HostMin:")  ${blueColour}$(printf "%-21s" $HostMin)${endColour}${redColour} $BinaryHostMin ${endColour}"
+echo -e "${grayColour} $(printf "%-10s" "HostMax:")  ${blueColour}$(printf "%-21s" $HostMax)${endColour}${redColour} $BinaryHostMax ${endColour}"
+echo -e "${grayColour} $(printf "%-10s" "TotalHost:")  ${blueColour}$(printf "%-21s" $TotalHost)${endColour}${redColour} Clase $Class, $Type ${endColour}\n"
